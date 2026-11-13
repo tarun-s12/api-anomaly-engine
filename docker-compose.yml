@@ -1,0 +1,55 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: anomaly_timescaledb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: observability
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d observability"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: anomaly_api
+    environment:
+      PORT: 3000
+      STORAGE_MODE: postgres
+      DATABASE_URL: postgres://postgres:postgres@timescaledb:5432/observability
+      BATCH_SIZE: 100
+      FLUSH_INTERVAL_MS: 2000
+    ports:
+      - "3000:3000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: anomaly_worker
+    environment:
+      STORAGE_MODE: postgres
+      DATABASE_URL: postgres://postgres:postgres@timescaledb:5432/observability
+      POLL_INTERVAL_SEC: 15
+      LLM_PROVIDER: ${LLM_PROVIDER:-fallback}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+volumes:
+  pgdata:
