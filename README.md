@@ -16,6 +16,12 @@ Features an embedded **Developer Observability Dashboard** (`http://localhost:30
 
 ---
 
+## Architecture
+
+<img width="972" height="687" alt="image" src="https://github.com/user-attachments/assets/46129deb-e1ce-42c1-bbe3-4f61a74b414e" />
+
+---
+
 ## Key Capabilities
 
 1. **High-Throughput Micro-Batching**: Enqueues telemetry into an in-memory ring buffer and writes batches via PostgreSQL parameterized `UNNEST`, eliminating DB connection contention and reducing round-trips by >95%.
