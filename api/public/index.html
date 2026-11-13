@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Anomaly & Observability Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', -apple-system, sans-serif; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-5 right-5 z-50 transform transition-all duration-300 translate-y-[-100px] opacity-0 pointer-events-none max-w-md bg-slate-900 border border-slate-700 text-slate-200 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3">
+    <div id="toast-icon" class="text-xl">⚡</div>
+    <div class="flex-1 text-sm font-medium" id="toast-message">Message</div>
+  </div>
+
+  <!-- Header -->
+  <header class="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-base font-bold tracking-tight text-white">API Anomaly Engine</h1>
+            <span class="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">Backend Observability</span>
+          </div>
+          <p class="text-xs text-slate-400">Micro-batching &bull; TimescaleDB &bull; Isolation Forest &bull; AI RCA</p>
+        </div>
+      </div>
+
+      <!-- Action Buttons & Status -->
+      <div class="flex items-center space-x-3">
+        <div class="hidden sm:flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300">
+          <span class="relative flex h-2 w-2">
+            <span id="health-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span id="health-dot" class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span id="health-text" class="font-medium">TimescaleDB Online</span>
+        </div>
+
+        <button id="btn-clear" onclick="clearData()" title="Clear telemetry and incident records from TimescaleDB" class="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 bg-slate-900 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 transition active:scale-95 disabled:opacity-50">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          <span>Clear DB</span>
+        </button>
+
+        <button id="btn-simulate" onclick="triggerSimulation()" class="group relative inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 transition shadow-lg shadow-indigo-500/25 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+          <svg id="simulate-icon" class="w-4 h-4 text-indigo-100 group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span id="simulate-text">Run Anomaly Simulation</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 space-y-6 w-full">
+
+    <!-- Architecture Callout Accordion -->
+    <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
+      <div class="flex items-center justify-between cursor-pointer" onclick="toggleArchitecture()">
+        <div class="flex items-center space-x-2">
+          <span class="text-xs font-semibold uppercase tracking-wider text-indigo-400">System Architecture Overview</span>
+          <span class="text-slate-500 text-xs">(Click to expand backend design highlights)</span>
+        </div>
+        <svg id="arch-arrow" class="w-4 h-4 text-slate-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+
+      <div id="arch-content" class="mt-4 pt-4 border-t border-slate-800/80 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+        <div class="space-y-1">
+          <div class="font-semibold text-slate-200 flex items-center space-x-1.5">
+            <span class="text-indigo-400 font-bold">1.</span>
+            <span>Micro-Batch Ingestion</span>
+          </div>
+          <p class="text-slate-400 leading-relaxed">In-memory ring buffer flushes logs in vectorized <code class="text-indigo-300">UNNEST</code> bulk inserts, avoiding database lock contention under high load.</p>
+        </div>
+
+        <div class="space-y-1">
+          <div class="font-semibold text-slate-200 flex items-center space-x-1.5">
+            <span class="text-cyan-400 font-bold">2.</span>
+            <span>TimescaleDB Storage</span>
+          </div>
+          <p class="text-slate-400 leading-relaxed">Time-partitioned hypertables prevent B-tree degradation and vacuum bloat across millions of append-heavy telemetry records.</p>
+        </div>
+
+        <div class="space-y-1">
+          <div class="font-semibold text-slate-200 flex items-center space-x-1.5">
+            <span class="text-amber-400 font-bold">3.</span>
+            <span>Isolation Forest Detector</span>
+          </div>
+          <p class="text-slate-400 leading-relaxed">Dual-layer detection: rolling latency Z-score + Scikit-Learn multivariate Isolation Forest catches multi-dimensional regressions.</p>
+        </div>
+
+        <div class="space-y-1">
+          <div class="font-semibold text-slate-200 flex items-center space-x-1.5">
+            <span class="text-emerald-400 font-bold">4.</span>
+            <span>AI Root-Cause Agent</span>
+          </div>
+          <p class="text-slate-400 leading-relaxed">Correlates surrounding trace windows & PostgreSQL <code class="text-emerald-300">EXPLAIN ANALYZE</code> plans to synthesize actionable DDL index fixes.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Telemetry & Health Metrics -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+        <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Received</div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="metric-received" class="text-2xl font-bold font-mono text-white">0</span>
+          <span class="text-[11px] text-slate-500">HTTP Ingest</span>
+        </div>
+        <div class="mt-1 text-[11px] text-slate-400 truncate">Validated with Zod schema</div>
+      </div>
+
+      <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+        <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Flushed to Database</div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="metric-flushed" class="text-2xl font-bold font-mono text-emerald-400">0</span>
+          <span class="text-[11px] text-slate-500">TimescaleDB</span>
+        </div>
+        <div class="mt-1 text-[11px] text-slate-400 truncate"><span id="metric-batches">0</span> batches flushed</div>
+      </div>
+
+      <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+        <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Buffer Depth</div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="metric-buffer" class="text-2xl font-bold font-mono text-indigo-400">0</span>
+          <span class="text-[11px] text-slate-500">Max: 100/flush</span>
+        </div>
+        <div class="mt-1 text-[11px] text-slate-400 truncate">Flush interval: 2,000ms</div>
+      </div>
+
+      <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+        <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Incidents</div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="metric-incidents" class="text-2xl font-bold font-mono text-amber-400">0</span>
+          <span class="text-[11px] text-slate-500">Diagnosed</span>
+        </div>
+        <div class="mt-1 text-[11px] text-slate-400 truncate">Auto-analyzed by worker</div>
+      </div>
+    </div>
+
+    <!-- Incidents Header & Filter -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+      <div>
+        <h2 class="text-lg font-bold text-white flex items-center space-x-2">
+          <span>Detected Anomalies & Root-Cause Diagnoses</span>
+          <span id="badge-count" class="text-xs bg-slate-800 text-slate-300 font-mono px-2 py-0.5 rounded-full">0</span>
+        </h2>
+        <p class="text-xs text-slate-400">Real-time incident reports generated by Scikit-Learn detector & AI root-cause agent</p>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-1 bg-slate-900 border border-slate-800 rounded-lg p-1 text-xs">
+          <button onclick="setFilter('ALL')" id="filter-all" class="px-2.5 py-1 rounded-md font-medium bg-indigo-600 text-white">All</button>
+          <button onclick="setFilter('CRITICAL')" id="filter-critical" class="px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white">Critical</button>
+          <button onclick="setFilter('HIGH')" id="filter-high" class="px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white">High</button>
+          <button onclick="setFilter('RESOLVED')" id="filter-resolved" class="px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white">Resolved</button>
+        </div>
+
+        <button onclick="fetchData()" title="Refresh now" class="p-1.5 rounded-lg border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Incident Cards Feed -->
+    <div id="incidents-container" class="space-y-4">
+      <!-- Loading State -->
+      <div id="loading-state" class="py-16 text-center text-slate-500 text-sm">
+        <svg class="animate-spin w-6 h-6 mx-auto mb-2 text-indigo-500" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        Connecting to Ingestion & Anomaly API...
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800/80 py-4 mt-8 bg-slate-950/60 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div>API Performance & Anomaly Detection Engine &bull; Built with Express, TimescaleDB, Python & Isolation Forest</div>
+      <div class="text-slate-400 font-mono text-[11px]">Worker polling interval: 15s</div>
+    </div>
+  </footer>
+
+  <script>
+    let allIncidents = [];
+    let currentFilter = 'ALL';
+    let isSimulating = false;
+
+    function showToast(message, icon = '⚡') {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-message').innerText = message;
+      document.getElementById('toast-icon').innerText = icon;
+      toast.classList.remove('translate-y-[-100px]', 'opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        toast.classList.add('translate-y-[-100px]', 'opacity-0', 'pointer-events-none');
+      }, 4000);
+    }
+
+    function toggleArchitecture() {
+      const content = document.getElementById('arch-content');
+      const arrow = document.getElementById('arch-arrow');
+      content.classList.toggle('hidden');
+      arrow.classList.toggle('rotate-180');
+    }
+
+    function setFilter(filter) {
+      currentFilter = filter;
+      ['all', 'critical', 'high', 'resolved'].forEach(f => {
+        const btn = document.getElementById(`filter-${f}`);
+        if (!btn) return;
+        if (f.toUpperCase() === filter) {
+          btn.className = "px-2.5 py-1 rounded-md font-medium bg-indigo-600 text-white";
+        } else {
+          btn.className = "px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white";
+        }
+      });
+      renderIncidents();
+    }
+
+    function updateMetricCounts() {
+      const activeCount = allIncidents.filter(i => (i.status || '').toUpperCase() !== 'RESOLVED').length;
+      const el = document.getElementById('metric-incidents');
+      if (el) el.innerText = activeCount;
+    }
+
+    async function resolveIncident(id) {
+      try {
+        const res = await fetch(`/api/v1/incidents/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'RESOLVED' })
+        });
+        if (res.ok) {
+          showToast(`Incident #${id} marked as RESOLVED!`, '✅');
+          const inc = allIncidents.find(i => i.id === id);
+          if (inc) inc.status = 'RESOLVED';
+          updateMetricCounts();
+          renderIncidents();
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          showToast(`Failed to resolve incident: ${errData.error || 'Server error'}`, '❌');
+        }
+      } catch (err) {
+        console.error("Resolve error:", err);
+        showToast('Network error resolving incident', '❌');
+      }
+    }
+
+    async function clearData() {
+      if (!confirm("Are you sure you want to clear all telemetry logs and incident records from the database?")) return;
+      try {
+        const res = await fetch('/api/v1/clear', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          showToast("Database & metrics reset to 0!", "🧹");
+          allIncidents = [];
+          document.getElementById('metric-received').innerText = '0';
+          document.getElementById('metric-flushed').innerText = '0';
+          document.getElementById('metric-buffer').innerText = '0';
+          document.getElementById('metric-batches').innerText = '0';
+          document.getElementById('metric-incidents').innerText = '0';
+          renderIncidents();
+        } else {
+          showToast(`Clear failed: ${data.error || 'Server error'}`, "❌");
+        }
+      } catch {
+        showToast("Network error resetting database", "❌");
+      }
+    }
+
+    async function triggerSimulation() {
+      if (isSimulating) return;
+      isSimulating = true;
+      const btn = document.getElementById('btn-simulate');
+      const btnText = document.getElementById('simulate-text');
+      btn.disabled = true;
+      btnText.innerText = "Injecting Telemetry...";
+
+      try {
+        const res = await fetch('/api/v1/simulate', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`Injected ${data.accepted || 225} logs! Worker analyzing anomalies in background...`, '🚀');
+          await fetchData();
+        } else {
+          showToast(`Simulation failed: ${data.error || 'Server error'}`, '❌');
+        }
+      } catch (err) {
+        showToast('Network error triggering simulation', '❌');
+      } finally {
+        setTimeout(() => {
+          isSimulating = false;
+          btn.disabled = false;
+          btnText.innerText = "Run Anomaly Simulation";
+        }, 1500);
+      }
+    }
+
+    function copyToClipboard(button, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const original = button.innerHTML;
+        button.innerHTML = `
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          <span class="text-emerald-400">Copied!</span>
+        `;
+        setTimeout(() => {
+          button.innerHTML = original;
+        }, 2000);
+      });
+    }
+
+    function formatTime(isoStr) {
+      try {
+        const d = new Date(isoStr);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } catch {
+        return isoStr;
+      }
+    }
+
+    function renderIncidents() {
+      const container = document.getElementById('incidents-container');
+      const badgeCount = document.getElementById('badge-count');
+
+      let list = allIncidents;
+      if (currentFilter === 'RESOLVED') {
+        list = list.filter(i => (i.status || '').toUpperCase() === 'RESOLVED');
+      } else if (currentFilter !== 'ALL') {
+        list = list.filter(i => (i.severity || '').toUpperCase() === currentFilter && (i.status || '').toUpperCase() !== 'RESOLVED');
+      }
+
+      badgeCount.innerText = list.length;
+
+      if (!list || list.length === 0) {
+        container.innerHTML = `
+          <div class="rounded-xl border border-dashed border-slate-800 bg-slate-900/20 py-12 px-4 text-center">
+            <div class="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto mb-3 text-slate-500 text-xl">
+              🛡️
+            </div>
+            <h3 class="text-sm font-semibold text-slate-300">${currentFilter === 'RESOLVED' ? 'No resolved incidents' : 'No anomalies detected'}</h3>
+            <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">${currentFilter === 'RESOLVED' ? 'Incidents resolved by engineers will appear here.' : 'All monitored endpoints are operating within normal baseline limits. Click <strong>Run Anomaly Simulation</strong> above to inject test traffic.'}</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = list.map(item => {
+        const isCritical = (item.severity || '').toUpperCase() === 'CRITICAL';
+        const isHigh = (item.severity || '').toUpperCase() === 'HIGH';
+        const isResolved = (item.status || '').toUpperCase() === 'RESOLVED';
+
+        const borderClass = isResolved
+          ? 'border-emerald-500/20 bg-emerald-500/5 opacity-80'
+          : (isCritical ? 'border-rose-500/30 bg-rose-500/5' : (isHigh ? 'border-amber-500/30 bg-amber-500/5' : 'border-indigo-500/30 bg-indigo-500/5'));
+
+        const badgeClass = isResolved
+          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+          : (isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : (isHigh ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'));
+
+        const diag = item.llm_diagnosis || {};
+        const metrics = item.metrics_summary || {};
+        const evidenceList = (diag.evidence || []).map(e => `
+          <li class="flex items-start space-x-2 text-xs text-slate-300">
+            <span class="text-rose-400 font-bold">&bull;</span>
+            <span>${escapeHtml(e)}</span>
+          </li>
+        `).join('');
+
+        const sqlFix = diag.sql_optimization || (diag.suggested_fix && diag.suggested_fix.includes('CREATE INDEX') ? diag.suggested_fix : null);
+
+        return `
+          <div class="rounded-xl border ${borderClass} bg-slate-900/80 p-5 space-y-4 shadow-xl transition hover:border-slate-700">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${badgeClass}">
+                  ${item.severity || 'UNKNOWN'}
+                </span>
+                <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                  ${item.anomaly_type || 'ANOMALY'}
+                </span>
+                ${isResolved ? `
+                  <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center space-x-1">
+                    <span>✓</span><span>RESOLVED</span>
+                  </span>
+                ` : `
+                  <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                    OPEN
+                  </span>
+                `}
+                <span class="font-bold text-sm text-white flex items-center space-x-1.5">
+                  <span class="text-slate-400 font-normal">${escapeHtml(item.service)} /</span>
+                  <span>${escapeHtml(item.endpoint)}</span>
+                </span>
+              </div>
+              <div class="flex items-center space-x-3">
+                <div class="text-[11px] font-mono text-slate-400 flex items-center space-x-1">
+                  <span>Detected:</span>
+                  <span class="text-slate-300">${formatTime(item.detected_at)}</span>
+                </div>
+                ${!isResolved ? `
+                  <button onclick="resolveIncident(${item.id})" class="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-emerald-600/20 border border-slate-700 hover:border-emerald-500/40 text-slate-300 hover:text-emerald-300 text-xs font-medium transition active:scale-95" title="Mark this incident as resolved">
+                    <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Resolve</span>
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/60 rounded-lg p-3 border border-slate-800/80 text-xs font-mono">
+              <div>
+                <span class="text-slate-500 block text-[10px] uppercase">P95 Latency</span>
+                <span class="text-sm font-bold text-white">${Number(item.p95_latency_ms || 0).toFixed(1)} ms</span>
+                <span class="text-[10px] text-slate-400 block">Baseline: ${Number(metrics.baseline_p95_ms || 110).toFixed(0)}ms</span>
+              </div>
+              <div>
+                <span class="text-slate-500 block text-[10px] uppercase">Z-Score Spike</span>
+                <span class="text-sm font-bold ${item.z_score > 1.5 ? 'text-rose-400' : 'text-slate-200'}">+${Number(item.z_score || 0).toFixed(2)} &sigma;</span>
+                <span class="text-[10px] text-slate-400 block">${metrics.detector_engine || 'IsolationForest'}</span>
+              </div>
+              <div>
+                <span class="text-slate-500 block text-[10px] uppercase">Error Rate</span>
+                <span class="text-sm font-bold ${item.error_rate > 0.05 ? 'text-amber-400' : 'text-slate-200'}">${(Number(item.error_rate || 0) * 100).toFixed(1)}%</span>
+                <span class="text-[10px] text-slate-400 block">${metrics.sample_count_recent || 0} recent requests</span>
+              </div>
+              <div>
+                <span class="text-slate-500 block text-[10px] uppercase">Outlier Score</span>
+                <span class="text-sm font-bold ${item.isolation_score < 0 ? 'text-rose-400' : 'text-slate-200'}">${Number(item.isolation_score || 0).toFixed(3)}</span>
+                <span class="text-[10px] text-slate-400 block">Anomaly ratio: ${(Number(metrics.isolation_outlier_ratio || 0) * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <div class="flex items-center space-x-1.5 text-xs font-semibold text-slate-300">
+                <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                <span>AI Root-Cause Diagnosis</span>
+                <span class="text-[10px] text-slate-500 font-normal">(Confidence: ${Math.round((diag.confidence || 0.9) * 100)}%)</span>
+              </div>
+              <div class="bg-slate-950/70 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 leading-relaxed font-sans">
+                ${escapeHtml(diag.root_cause || 'No diagnosis available.')}
+              </div>
+            </div>
+
+            ${evidenceList ? `
+              <div class="space-y-1">
+                <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Correlated Telemetry Evidence:</span>
+                <ul class="space-y-1 pl-1">
+                  ${evidenceList}
+                </ul>
+              </div>
+            ` : ''}
+
+            ${diag.suggested_fix ? `
+              <div class="space-y-2 pt-1 border-t border-slate-800/60">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-emerald-400 flex items-center space-x-1">
+                    <span>💡 Recommended Remediation:</span>
+                  </span>
+                  ${sqlFix ? `
+                    <button onclick="copyToClipboard(this, ${escapeAttr(sqlFix)})" class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 transition">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                      </svg>
+                      <span>Copy Fix</span>
+                    </button>
+                  ` : ''}
+                </div>
+                <div class="bg-slate-950 border border-emerald-500/20 rounded-lg p-3 text-xs font-mono text-emerald-300 overflow-x-auto">
+                  ${escapeHtml(sqlFix || diag.suggested_fix)}
+                </div>
+              </div>
+            ` : ''}
+
+          </div>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function escapeAttr(str) {
+      if (!str) return "''";
+      return JSON.stringify(str);
+    }
+
+    async function fetchData() {
+      try {
+        const healthRes = await fetch('/api/v1/health').catch(() => null);
+        const healthDot = document.getElementById('health-dot');
+        const healthPing = document.getElementById('health-ping');
+        const healthText = document.getElementById('health-text');
+
+        if (healthRes && healthRes.ok) {
+          healthDot.className = "relative inline-flex rounded-full h-2 w-2 bg-emerald-500";
+          healthPing.className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75";
+          healthText.innerText = "TimescaleDB Online";
+        } else {
+          healthDot.className = "relative inline-flex rounded-full h-2 w-2 bg-rose-500";
+          healthPing.className = "hidden";
+          healthText.innerText = "Database Offline";
+        }
+
+        const metricsRes = await fetch('/api/v1/metrics').catch(() => null);
+        if (metricsRes && metricsRes.ok) {
+          const metrics = await metricsRes.json();
+          document.getElementById('metric-received').innerText = metrics.totalReceived || 0;
+          document.getElementById('metric-flushed').innerText = metrics.totalFlushed || 0;
+          document.getElementById('metric-buffer').innerText = metrics.bufferSize || 0;
+          document.getElementById('metric-batches').innerText = metrics.flushCount || 0;
+        }
+
+        const incidentsRes = await fetch('/api/v1/incidents?limit=50').catch(() => null);
+        if (incidentsRes && incidentsRes.ok) {
+          const data = await incidentsRes.json();
+          allIncidents = data.incidents || [];
+          updateMetricCounts();
+          renderIncidents();
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }
+
+    fetchData();
+    setInterval(fetchData, 4000);
+  </script>
+</body>
+</html>
